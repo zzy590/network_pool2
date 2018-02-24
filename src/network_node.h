@@ -31,7 +31,7 @@
 
 namespace NETWORK_POOL
 {
-	class Csockaddr
+	class Csockaddr : public CcachedAllocator
 	{
 	private:
 		union __sockaddr_mix
@@ -387,7 +387,7 @@ namespace NETWORK_POOL
 		const CnetworkNode& operator=(CnetworkNode&& another) // Move is copy, and another.m_hash will not change.
 		{
 			m_protocol = another.m_protocol;
-			m_sockaddr = another.m_sockaddr;
+			m_sockaddr = std::move(another.m_sockaddr);
 			m_hash = another.m_hash;
 			return *this;
 		}
@@ -454,15 +454,16 @@ namespace NETWORK_POOL
 		}
 
 	public:
-		CnetworkPair() :m_protocol(CnetworkNode::protocol_tcp), m_hash(0) {} // All zero and hash is 0.
+		CnetworkPair()
+			:m_protocol(CnetworkNode::protocol_tcp), m_hash(0) {} // All zero and hash is 0.
 		CnetworkPair(const CnetworkNode::protocol_type protocol, const Csockaddr& local, const Csockaddr& remote)
 			:m_protocol(protocol), m_local(local), m_remote(remote) { rehash(); }
 		CnetworkPair(const CnetworkNode::protocol_type protocol, Csockaddr&& local, const Csockaddr& remote)
-			:m_protocol(protocol), m_local(local), m_remote(remote) { rehash(); }
+			:m_protocol(protocol), m_local(std::forward<Csockaddr>(local)), m_remote(remote) { rehash(); }
 		CnetworkPair(const CnetworkNode::protocol_type protocol, const Csockaddr& local, Csockaddr&& remote)
-			:m_protocol(protocol), m_local(local), m_remote(remote) { rehash(); }
+			:m_protocol(protocol), m_local(local), m_remote(std::forward<Csockaddr>(remote)) { rehash(); }
 		CnetworkPair(const CnetworkNode::protocol_type protocol, Csockaddr&& local, Csockaddr&& remote)
-			:m_protocol(protocol), m_local(local), m_remote(remote) { rehash(); }
+			:m_protocol(protocol), m_local(std::forward<Csockaddr>(local)), m_remote(std::forward<Csockaddr>(remote)) { rehash(); }
 		CnetworkPair(const CnetworkPair& another)
 			:m_protocol(another.m_protocol), m_local(another.m_local), m_remote(another.m_remote), m_hash(another.m_hash) {}
 		CnetworkPair(CnetworkPair&& another) // Move is copy, and another.m_hash will not change.
@@ -511,7 +512,7 @@ namespace NETWORK_POOL
 		}
 		inline void setLocal(Csockaddr&& local)
 		{
-			m_local = local;
+			m_local = std::forward<Csockaddr>(local);
 			rehash();
 		}
 		inline void setRemote(const Csockaddr& remote)
@@ -521,7 +522,7 @@ namespace NETWORK_POOL
 		}
 		inline void setRemote(Csockaddr&& remote)
 		{
-			m_remote = remote;
+			m_remote = std::forward<Csockaddr>(remote);
 			rehash();
 		}
 

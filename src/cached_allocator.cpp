@@ -27,18 +27,18 @@
 #include "uv.h"
 
 #include "cached_allocator.h"
-#include "network_node.h"
 #include "buffer.h"
-#include "network_pool.h"
+#include "network_node.h"
 #include "uv_wrapper.h"
+#include "network_pool.h"
 
-#define FA_DBG 0
-#if FA_DBG
+#define CA_DBG 0
+#if CA_DBG
 	#include <stdio.h>
 	#include <cstring>
-	#define FA_FPRINTF(_x) { fprintf _x; }
+	#define CA_FPRINTF(_x) { fprintf _x; }
 #else
-	#define FA_FPRINTF(_x) {}
+	#define CA_FPRINTF(_x) {}
 #endif
 
 namespace NETWORK_POOL
@@ -62,16 +62,18 @@ namespace NETWORK_POOL
 		std::call_once(s_storeNumberInit, []()
 		{
 			#define set_max_store_number(_s, _n) { if ((_s) < s_maxAllocatorSlot) s_maxAllocatorStoreNumber[(_s)] = (_n); }
-			set_max_store_number(sizeof(CnetworkNode), 512);
-			set_max_store_number(sizeof(Cbuffer), 512);
 			set_max_store_number(sizeof(uv_shutdown_t), 1024);
 			set_max_store_number(sizeof(uv_connect_t), 1024);
-			set_max_store_number(sizeof(CnetworkPool::__write_with_info), 4096);
-			set_max_store_number(sizeof(CnetworkPool::__udp_send_with_info), 4096);
+			set_max_store_number(sizeof(Cbuffer), 512);
+			set_max_store_number(sizeof(Csockaddr), 512);
+			set_max_store_number(sizeof(CnetworkNode), 512);
+			set_max_store_number(sizeof(CnetworkPair), 0);
 			set_max_store_number(sizeof(Casync), 0);
 			set_max_store_number(sizeof(CtcpServer), 0);
 			set_max_store_number(sizeof(Ctcp), 16384);
 			set_max_store_number(sizeof(Cudp), 0);
+			set_max_store_number(sizeof(CnetworkPool::__write_with_info), 4096);
+			set_max_store_number(sizeof(CnetworkPool::__udp_send_with_info), 4096);
 			#undef set_max_store_number
 		});
 	}
@@ -79,11 +81,11 @@ namespace NETWORK_POOL
 	void *__alloc(const size_t size)
 	{
 		initStoreNumber();
-		FA_FPRINTF((stderr, "fa alloc %u.\n", size));
+		CA_FPRINTF((stderr, "fa alloc %u.\n", size));
 		size_t allocSize = sizeof(size_t) + size;
 		if (allocSize < size) // In case of overflow.
 		{
-			FA_FPRINTF((stderr, "malloc_no_throw size overflow.\n"));
+			CA_FPRINTF((stderr, "malloc_no_throw size overflow.\n"));
 			std::terminate();
 		}
 		void *ptr = nullptr;
@@ -91,7 +93,7 @@ namespace NETWORK_POOL
 			ptr = malloc(allocSize);
 		else
 		{
-			FA_FPRINTF((stderr, "fa use store.\n"));
+			CA_FPRINTF((stderr, "fa use store.\n"));
 			s_globalLock.lock();
 			if (s_allocatorStore[size] != nullptr)
 			{
@@ -108,7 +110,7 @@ namespace NETWORK_POOL
 		*(size_t *)ptr = allocSize;
 		++s_count;
 		s_size += allocSize;
-	#if FA_DBG
+	#if CA_DBG
 		memset((size_t *)ptr + 1, -1, size);
 	#endif
 		return (size_t *)ptr + 1;
@@ -126,18 +128,18 @@ namespace NETWORK_POOL
 	{
 		if (nullptr == ptr)
 			return;
-		FA_FPRINTF((stderr, "fa free %u.\n", size));
+		CA_FPRINTF((stderr, "fa free %u.\n", size));
 		void *org = (size_t *)ptr - 1;
 		size_t allocSize = *(size_t *)org;
 		size_t orgSize = allocSize - sizeof(size_t);
 		--s_count;
 		s_size -= allocSize;
-	#if FA_DBG
+	#if CA_DBG
 		memset(org, -1, allocSize);
 	#endif
 		if (orgSize >= s_maxAllocatorSlot || 0 == s_maxAllocatorStoreNumber[orgSize])
 			return free(org);
-		FA_FPRINTF((stderr, "fa use store.\n"));
+		CA_FPRINTF((stderr, "fa use store.\n"));
 		s_globalLock.lock();
 		if (s_allocatorStoreCount[orgSize] < s_maxAllocatorStoreNumber[orgSize])
 		{
@@ -147,8 +149,7 @@ namespace NETWORK_POOL
 			org = nullptr;
 		}
 		s_globalLock.unlock();
-		if (org != nullptr)
-			free(org);
+		free(org); // Free can deal with nullptr.
 	}
 
 	bool __dynamic_set_cache(const size_t size, const size_t cacheNumber)

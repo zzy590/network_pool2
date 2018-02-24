@@ -64,24 +64,23 @@ namespace NETWORK_POOL
 		std::mutex m_lock;
 		struct __pending_bind
 		{
-			CnetworkNode m_local;
+			CnetworkNode::protocol_type m_protocol;
+			Csockaddr m_local;
 			CtcpServerCallback::ptr m_tcpServerCallback;
 			CudpCallback::ptr m_udpCallback;
 			bool m_bBind;
 			socket_id m_socketId;
 
-			__pending_bind(const CnetworkNode& local, CtcpServerCallback::ptr&& tcpServerCallback)
-				:m_local(local), m_tcpServerCallback(std::forward<CtcpServerCallback::ptr>(tcpServerCallback)), m_bBind(true), m_socketId(SOCKET_ID_UNSPEC) {}
-			__pending_bind(const CnetworkNode& local)
-				:m_local(local), m_bBind(false), m_socketId(SOCKET_ID_UNSPEC) {}
-			__pending_bind(const CnetworkNode& local, CudpCallback::ptr&& udpCallback)
-				:m_local(local), m_udpCallback(std::forward<CudpCallback::ptr>(udpCallback)), m_bBind(true), m_socketId(SOCKET_ID_UNSPEC) {}
-			__pending_bind(socket_id socketId)
-				:m_bBind(false), m_socketId(socketId) {}
+			__pending_bind(const Csockaddr& local, CtcpServerCallback::ptr&& tcpServerCallback)
+				:m_protocol(CnetworkNode::protocol_tcp), m_local(local), m_tcpServerCallback(std::forward<CtcpServerCallback::ptr>(tcpServerCallback)), m_bBind(true), m_socketId(SOCKET_ID_UNSPEC) {}
+			__pending_bind(const Csockaddr& local, CudpCallback::ptr&& udpCallback)
+				:m_protocol(CnetworkNode::protocol_udp), m_local(local), m_udpCallback(std::forward<CudpCallback::ptr>(udpCallback)), m_bBind(true), m_socketId(SOCKET_ID_UNSPEC) {}
+			__pending_bind(const CnetworkNode::protocol_type protocol, socket_id socketId)
+				:m_protocol(protocol), m_bBind(false), m_socketId(socketId) {}
 
 			__pending_bind(const __pending_bind& another) = delete;
 			__pending_bind(__pending_bind&& another)
-				:m_local(std::move(another.m_local)), m_tcpServerCallback(std::move(another.m_tcpServerCallback)), m_udpCallback(std::move(another.m_udpCallback)), m_bBind(another.m_bBind), m_socketId(another.m_socketId) {}
+				:m_protocol(another.m_protocol), m_local(std::move(another.m_local)), m_tcpServerCallback(std::move(another.m_tcpServerCallback)), m_udpCallback(std::move(another.m_udpCallback)), m_bBind(another.m_bBind), m_socketId(another.m_socketId) {}
 			const __pending_bind& operator=(const __pending_bind& another) = delete;
 			const __pending_bind& operator=(__pending_bind&& another) = delete;
 		};
@@ -104,26 +103,25 @@ namespace NETWORK_POOL
 		struct __pending_send_udp
 		{
 			socket_id m_socketId;
-			CnetworkNode m_remote;
+			Csockaddr m_remote;
 			Cbuffer m_data;
 
-			__pending_send_udp(const socket_id socketId, const CnetworkNode& remote, const void *data, const size_t length)
+			__pending_send_udp(const socket_id socketId, const Csockaddr& remote, const void *data, const size_t length)
 				:m_socketId(socketId), m_remote(remote), m_data(data, length) {}
 
 			__pending_send_udp(const __pending_send_udp& another) = delete;
 			__pending_send_udp(__pending_send_udp&& another)
 				:m_socketId(another.m_socketId), m_remote(std::move(another.m_remote)), m_data(std::move(another.m_data)) {}
-
 			const __pending_send_udp& operator=(const __pending_send_udp& another) = delete;
 			const __pending_send_udp& operator=(__pending_send_udp&& another) = delete;
 		};
 		std::deque<__pending_send_udp> m_pendingSendUdp;
 		struct __pending_connect
 		{
-			CnetworkNode m_remote;
+			Csockaddr m_remote;
 			CtcpCallback::ptr m_callback;
 
-			__pending_connect(const CnetworkNode& remote, CtcpCallback::ptr&& callback)
+			__pending_connect(const Csockaddr& remote, CtcpCallback::ptr&& callback)
 				:m_remote(remote), m_callback(std::forward<CtcpCallback::ptr>(callback)) {}
 
 			__pending_connect(const __pending_connect& another) = delete;
@@ -144,7 +142,6 @@ namespace NETWORK_POOL
 			__pending_close(const __pending_close& another) = delete;
 			__pending_close(__pending_close&& another)
 				:m_socketId(another.m_socketId), m_bForce(another.m_bForce) {}
-
 			const __pending_close& operator=(const __pending_close& another) = delete;
 			const __pending_close& operator=(__pending_close&& another) = delete;
 		};
@@ -160,7 +157,7 @@ namespace NETWORK_POOL
 		// Loop must be initialized in internal work thread.
 		uv_loop_t m_loop;
 		Casync::ptr m_wakeup;
-		std::unordered_map<CnetworkNode, CtcpServer::ptr, __network_hash> m_tcpServers;
+		std::unordered_map<socket_id, CtcpServer::ptr> m_tcpServers;
 		std::unordered_map<socket_id, Cudp::ptr> m_udpServers;
 		std::unordered_map<socket_id, Ctcp::ptr> m_socketId2stream;
 		std::unordered_map<socket_id, Ctcp::ptr> m_connecting;
@@ -180,15 +177,16 @@ namespace NETWORK_POOL
 		bool setTcpTimeout(Ctcp * const tcp, const unsigned int timeout_in_seconds);
 		bool tcpReadWithTimeout(Ctcp * const tcp);
 		bool tcpWriteWithTimeout(Ctcp * const tcp, Cbuffer * const data, const size_t number);
-		CtcpServer::ptr bindAndListenTcp(const CnetworkNode& local, CtcpServerCallback::ptr&& callback);
-		Ctcp::ptr connectTcp(const CnetworkNode& remote, CtcpCallback::ptr&& callback);
-		bool udpSend(Cudp * const udp, const CnetworkNode& remote, Cbuffer * const data, const size_t number);
-		Cudp::ptr bindAndListenUdp(const CnetworkNode& local, CudpCallback::ptr&& callback);
+		CtcpServer::ptr bindAndListenTcp(const Csockaddr& local, CtcpServerCallback::ptr&& callback);
+		Ctcp::ptr connectTcp(const Csockaddr& remote, CtcpCallback::ptr&& callback);
+
+		bool udpSend(Cudp * const udp, const Csockaddr& remote, Cbuffer * const data, const size_t number);
+		Cudp::ptr bindAndListenUdp(const Csockaddr& local, CudpCallback::ptr&& callback);
 
 		void internalThread();
 
 		// Caution! Call following function(s) may cause iterator of m_socketId2stream invalid.
-		inline void startupTcpConnection(Ctcp::ptr&& tcp, const CnetworkNode& remote);
+		inline void startupTcpConnection(Ctcp::ptr&& tcp, const Csockaddr& remote);
 		inline void shutdownTcpConnection(Ctcp * const tcp, const bool bShutdown = false);
 
 		void bind(__pending_bind&& req)
@@ -213,7 +211,11 @@ namespace NETWORK_POOL
 		~CnetworkPool()
 		{
 			m_bWantExit = true;
-			uv_async_send(m_wakeup->getAsync());
+			// Use lock to keep safe.
+			m_lock.lock();
+			if (m_wakeup)
+				uv_async_send(m_wakeup->getAsync());
+			m_lock.unlock();
 			m_thread->join();
 		}
 
@@ -223,57 +225,83 @@ namespace NETWORK_POOL
 		const CnetworkPool& operator=(const CnetworkPool& another) = delete;
 		const CnetworkPool& operator=(CnetworkPool&& another) = delete;
 
-		void bindTcp(const CnetworkNode& local, CtcpServerCallback::ptr&& callback)
+		void bindTcp(const Csockaddr& local, CtcpServerCallback::ptr&& callback)
 		{
-			if (local.getProtocol() != CnetworkNode::protocol_tcp || !callback)
-				return;
-			bind(std::move(__pending_bind(local, std::forward<CtcpServerCallback::ptr>(callback))));
+			if (callback)
+				bind(std::move(__pending_bind(local, std::forward<CtcpServerCallback::ptr>(callback))));
 		}
-		void unbindTcp(const CnetworkNode& local)
+		void unbindTcp(const socket_id socketId)
 		{
-			if (local.getProtocol() != CnetworkNode::protocol_tcp)
-				return;
-			bind(std::move(__pending_bind(local)));
+			bind(std::move(__pending_bind(CnetworkNode::protocol_tcp, socketId)));
 		}
-		void bindUdp(const CnetworkNode& local, CudpCallback::ptr&& callback)
+
+		void bindUdp(const Csockaddr& local, CudpCallback::ptr&& callback)
 		{
-			if (local.getProtocol() != CnetworkNode::protocol_udp || !callback)
-				return;
-			bind(std::move(__pending_bind(local, std::forward<CudpCallback::ptr>(callback))));
+			if (callback)
+				bind(std::move(__pending_bind(local, std::forward<CudpCallback::ptr>(callback))));
 		}
 		void unbindUdp(const socket_id socketId)
 		{
-			bind(std::move(__pending_bind(socketId)));
+			bind(std::move(__pending_bind(CnetworkNode::protocol_udp, socketId)));
 		}
 
-		void sendTcp(const socket_id socketId, const void *data, const size_t length)
+		void sendTcp(const socket_id socketId, const void *data, const size_t length, bool bAllowDirectCall = true)
 		{
 			if (0 == length || nullptr == data)
 				return;
-			__pending_send_tcp temp(socketId, data, length);
+			if (bAllowDirectCall && std::this_thread::get_id() == m_thread->get_id())
 			{
-				std::lock_guard<std::mutex> guard(m_lock); // Use guard in case of exception.
-				m_pendingSendTcp.push_back(std::move(temp));
+				// Direct send.
+				auto it = m_socketId2stream.find(socketId);
+				if (it != m_socketId2stream.end())
+				{
+					Ctcp *tcp = it->second.get();
+					Cbuffer buf(data, length);
+					if (!tcpWriteWithTimeout(tcp, &buf, 1))
+						shutdownTcpConnection(tcp);
+				}
 			}
-			uv_async_send(m_wakeup->getAsync());
+			else
+			{
+				__pending_send_tcp temp(socketId, data, length);
+				{
+					std::lock_guard<std::mutex> guard(m_lock); // Use guard in case of exception.
+					m_pendingSendTcp.push_back(std::move(temp));
+				}
+				uv_async_send(m_wakeup->getAsync());
+			}
 		}
-		void sendUdp(const socket_id socketId, const CnetworkNode& remote, const void *data, const size_t length)
+		void sendUdp(const socket_id socketId, const Csockaddr& remote, const void *data, const size_t length, bool bAllowDirectCall = true)
 		{
-			if (0 == length || nullptr == data)
+			if (0 == length || nullptr == data || length > 65507)
 				return;
-			if (remote.getProtocol() != CnetworkNode::protocol_udp || length > 65507)
-				return;
-			__pending_send_udp temp(socketId, remote, data, length);
+			if (bAllowDirectCall && std::this_thread::get_id() == m_thread->get_id())
 			{
-				std::lock_guard<std::mutex> guard(m_lock); // Use guard in case of exception.
-				m_pendingSendUdp.push_back(std::move(temp));
+				auto it = m_udpServers.find(socketId);
+				if (it != m_udpServers.end())
+				{
+					Cbuffer buf(data, length);
+					udpSend(it->second.get(), remote, &buf, 1);
+				}
 			}
-			uv_async_send(m_wakeup->getAsync());
+			else
+			{
+				__pending_send_udp temp(socketId, remote, data, length);
+				{
+					std::lock_guard<std::mutex> guard(m_lock); // Use guard in case of exception.
+					m_pendingSendUdp.push_back(std::move(temp));
+				}
+				uv_async_send(m_wakeup->getAsync());
+			}
 		}
 
-		void connect(const CnetworkNode& remote, CtcpCallback::ptr&& callback)
+		//
+		// Following function(s) are only for tcp.
+		//
+
+		void connect(const Csockaddr& remote, CtcpCallback::ptr&& callback)
 		{
-			if (remote.getProtocol() != CnetworkNode::protocol_tcp || !callback)
+			if (!callback)
 				return;
 			__pending_connect temp(remote, std::forward<CtcpCallback::ptr>(callback));
 			{

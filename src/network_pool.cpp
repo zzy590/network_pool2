@@ -150,18 +150,23 @@ namespace NETWORK_POOL
 		return true;
 	}
 	
-	CtcpServer::ptr CnetworkPool::bindAndListenTcp(const CnetworkNode& local, CtcpServerCallback::ptr&& callback)
+	CtcpServer::ptr CnetworkPool::bindAndListenTcp(const Csockaddr& local, CtcpServerCallback::ptr&& callback)
 	{
-		if (local.getProtocol() != CnetworkNode::protocol_tcp)
-			return std::move(CtcpServer::ptr());
-		CtcpServer::ptr tcpServer = CtcpServer::alloc(this, &m_loop, std::forward<CtcpServerCallback::ptr>(callback));
+		CtcpServer::ptr tcpServer = CtcpServer::alloc(this, &m_loop, std::forward<CtcpServerCallback::ptr>(callback), ++m_socketIdCounter);
 		if (!tcpServer)
 			goto_ec((stderr, "Bind and listen tcp error with insufficient memory.\n"));
 		on_uv_error_goto_ec(
-			uv_tcp_bind(tcpServer->getTcp(), local.getSockaddr().getSockaddr(), 0),
+			uv_tcp_bind(tcpServer->getTcp(), local.getSockaddr(), 0),
 			(stderr, "Bind and listen tcp bind error.\n"));
 		if (!tcpServer->customize())
 			goto_ec((stderr, "Bind and listen tcp customize error.\n"));
+		// Get binded local.
+		sockaddr_storage realLocal;
+		int len;
+		len = sizeof(realLocal);
+		on_uv_error_goto_ec(
+			uv_tcp_getsockname(tcpServer->getTcp(), (sockaddr *)&realLocal, &len),
+			(stderr, "Bind and listen tcp getsockname error.\n"));
 		on_uv_error_goto_ec(
 			uv_listen(tcpServer->getStream(), tcpServer->getCallback()->getSettings().tcp_backlog,
 			[](uv_stream_t *server, int status)
@@ -206,21 +211,20 @@ namespace NETWORK_POOL
 			if (!pool->tcpReadWithTimeout(clientTcp.get()))
 				goto_ec((stderr, "New incoming connection tcp read start error.\n"));
 			// Startup connection.
-			pool->startupTcpConnection(std::move(clientTcp), CnetworkNode(CnetworkNode::protocol_tcp, (const sockaddr *)&peer, len));
+			pool->startupTcpConnection(std::move(clientTcp), Csockaddr((const sockaddr *)&peer, len));
+			return;
 		_ec:; // Auto free tcp and cb if not moved.
 		}),
 			(stderr, "Bind and listen tcp listen error.\n"));
-		tcpServer->getCallback()->startup(local);
+		tcpServer->getCallback()->startup(tcpServer->getSocketId(), Csockaddr((const sockaddr *)&realLocal, len));
 		return std::move(tcpServer);
 	_ec:
 		// Auto free server ptr if not moved.
 		return std::move(CtcpServer::ptr());
 	}
 
-	Ctcp::ptr CnetworkPool::connectTcp(const CnetworkNode& remote, CtcpCallback::ptr&& callback)
+	Ctcp::ptr CnetworkPool::connectTcp(const Csockaddr& remote, CtcpCallback::ptr&& callback)
 	{
-		if (remote.getProtocol() != CnetworkNode::protocol_tcp)
-			return std::move(Ctcp::ptr());
 		uv_connect_t *connect = (uv_connect_t *)__alloc(sizeof(uv_connect_t));
 		if (nullptr == connect)
 		{
@@ -233,7 +237,7 @@ namespace NETWORK_POOL
 		if (!setTcpTimeout(tcp.get(), tcp->getCallback()->getTimeoutSettings().tcp_connect_timeout_in_seconds))
 			goto_ec((stderr, "Connect tcp error with set timeout error.\n"));
 		on_uv_error_goto_ec(
-			uv_tcp_connect(connect, tcp->getTcp(), remote.getSockaddr().getSockaddr(),
+			uv_tcp_connect(connect, tcp->getTcp(), remote.getSockaddr(),
 			[](uv_connect_t *req, int status)
 		{
 			// First take ptr from connecting map.
@@ -263,7 +267,8 @@ namespace NETWORK_POOL
 			if (!pool->tcpReadWithTimeout(tcp.get()))
 				goto_ec((stderr, "Connect tcp read start error.\n"));
 			// Startup connection.
-			pool->startupTcpConnection(std::move(tcp), CnetworkNode(CnetworkNode::protocol_tcp, (const sockaddr *)&peer, len));
+			pool->startupTcpConnection(std::move(tcp), Csockaddr((const sockaddr *)&peer, len));
+			return;
 		_ec:; // Auto free tcp if notr moved.
 		}),
 			(stderr, "Connect tcp error with connect error.\n"));
@@ -274,7 +279,7 @@ namespace NETWORK_POOL
 		return std::move(Ctcp::ptr());
 	}
 
-	bool CnetworkPool::udpSend(Cudp * const udp, const CnetworkNode& remote, Cbuffer * const data, const size_t number)
+	bool CnetworkPool::udpSend(Cudp * const udp, const Csockaddr& remote, Cbuffer * const data, const size_t number)
 	{
 		__udp_send_with_info *udpSendInfo = (__udp_send_with_info *)__alloc(sizeof(__udp_send_with_info) + sizeof(uv_buf_t) * (number - 1));
 		if (nullptr == udpSendInfo)
@@ -286,7 +291,7 @@ namespace NETWORK_POOL
 		udpSendInfo->num = number;
 		for (size_t i = 0; i < number; ++i)
 			data[i].transfer(udpSendInfo->buf[i]);
-		int iRet = uv_udp_send(&udpSendInfo->udpSend, udp->getUdp(), udpSendInfo->buf, (unsigned int)udpSendInfo->num, remote.getSockaddr().getSockaddr(),
+		int iRet = uv_udp_send(&udpSendInfo->udpSend, udp->getUdp(), udpSendInfo->buf, (unsigned int)udpSendInfo->num, remote.getSockaddr(),
 			[](uv_udp_send_t *req, int status)
 		{
 			if (status != 0)
@@ -313,15 +318,13 @@ namespace NETWORK_POOL
 		return true;
 	}
 
-	Cudp::ptr CnetworkPool::bindAndListenUdp(const CnetworkNode& local, CudpCallback::ptr&& callback)
+	Cudp::ptr CnetworkPool::bindAndListenUdp(const Csockaddr& local, CudpCallback::ptr&& callback)
 	{
-		if (local.getProtocol() != CnetworkNode::protocol_udp)
-			return std::move(Cudp::ptr());
 		Cudp::ptr udp = Cudp::alloc(this, &m_loop, std::forward<CudpCallback::ptr>(callback), ++m_socketIdCounter);
 		if (!udp)
 			goto_ec((stderr, "Bind and listen udp error with insufficient memory.\n"));
 		on_uv_error_goto_ec(
-			uv_udp_bind(udp->getUdp(), local.getSockaddr().getSockaddr(), 0),
+			uv_udp_bind(udp->getUdp(), local.getSockaddr(), 0),
 			(stderr, "Bind and listen udp bind error.\n"));
 		// Get binded local.
 		sockaddr_storage realLocal;
@@ -359,14 +362,14 @@ namespace NETWORK_POOL
 			else if (addr != nullptr)
 			{
 				// Report message.
-				udp->getCallback()->packet(CnetworkNode(CnetworkNode::protocol_udp, addr, sizeof(sockaddr_storage)), buf->base, nread);
+				udp->getCallback()->packet(Csockaddr(addr, sizeof(sockaddr_storage)), buf->base, nread);
 				udp->getCallback()->deallocateForPacket(buf->base, buf->len);
 			}
 			else
 				udp->getCallback()->deallocateForPacket(buf->base, buf->len);
 		}) != 0)
 			goto_ec((stderr, "Bind and listen udp listen error.\n"));
-		udp->getCallback()->startup(udp->getSocketId(), CnetworkNode(CnetworkNode::protocol_udp, (const sockaddr *)&realLocal, len));
+		udp->getCallback()->startup(udp->getSocketId(), Csockaddr((const sockaddr *)&realLocal, len));
 		return std::move(udp);
 	_ec:
 		return std::move(Cudp::ptr());
@@ -408,10 +411,12 @@ namespace NETWORK_POOL
 				//
 				// Stop and free all resources.
 				//
-				// Async.
+				// Async.(Free in lock for safety.)
+				pool->m_lock.lock();
 				pool->m_wakeup.reset();
+				pool->m_lock.unlock();
 				// TCP servers.
-				std::unordered_map<CnetworkNode, CtcpServer::ptr, __network_hash> tmpTcpServers(std::move(pool->m_tcpServers));
+				std::unordered_map<socket_id, CtcpServer::ptr> tmpTcpServers(std::move(pool->m_tcpServers));
 				pool->m_tcpServers.clear();
 				for (const auto& pair : tmpTcpServers)
 					pair.second->getCallback()->shutdown();
@@ -443,18 +448,14 @@ namespace NETWORK_POOL
 				// Bind.
 				for (auto& req : bindCopy)
 				{
-					const CnetworkNode& local = req.m_local;
 					if (req.m_bBind)
 					{
+						const Csockaddr& local = req.m_local;
 						if (req.m_tcpServerCallback)
 						{
-							auto it = pool->m_tcpServers.find(local);
-							if (it == pool->m_tcpServers.end())
-							{
-								CtcpServer::ptr tcpServer = pool->bindAndListenTcp(local, std::move(req.m_tcpServerCallback));
-								if (tcpServer)
-									pool->m_tcpServers.insert(std::make_pair(local, std::move(tcpServer)));
-							}
+							CtcpServer::ptr tcpServer = pool->bindAndListenTcp(local, std::move(req.m_tcpServerCallback));
+							if (tcpServer)
+								pool->m_tcpServers.insert(std::make_pair(tcpServer->getSocketId(), std::move(tcpServer)));
 						}
 						else if (req.m_udpCallback)
 						{
@@ -466,17 +467,22 @@ namespace NETWORK_POOL
 					else
 					{
 						const socket_id& socketId = req.m_socketId;
-						if (SOCKET_ID_UNSPEC == socketId)
+						switch (req.m_protocol)
 						{
-							auto it = pool->m_tcpServers.find(local);
+						case CnetworkNode::protocol_tcp:
+						{
+							auto it = pool->m_tcpServers.find(socketId);
 							if (it != pool->m_tcpServers.end())
 							{
 								CtcpServer::ptr tcpServers(std::move(it->second));
 								pool->m_tcpServers.erase(it);
 								tcpServers->getCallback()->shutdown();
+								// Auto free.
 							}
 						}
-						else
+							break;
+
+						case CnetworkNode::protocol_udp:
 						{
 							auto it = pool->m_udpServers.find(socketId);
 							if (it != pool->m_udpServers.end())
@@ -485,7 +491,13 @@ namespace NETWORK_POOL
 								pool->m_udpServers.erase(it);
 								uv_udp_recv_stop(udp->getUdp()); // Ignore the result.
 								udp->getCallback()->shutdown();
+								// Auto free.
 							}
+						}
+							break;
+
+						default:
+							break;
 						}
 					}
 				}
@@ -539,7 +551,7 @@ namespace NETWORK_POOL
 		uv_loop_close(&m_loop);
 	}
 
-	inline void CnetworkPool::startupTcpConnection(Ctcp::ptr&& tcp, const CnetworkNode& remote)
+	inline void CnetworkPool::startupTcpConnection(Ctcp::ptr&& tcp, const Csockaddr& remote)
 	{
 		// Add map.
 		auto ib = m_socketId2stream.insert(std::make_pair(tcp->getSocketId(), std::forward<Ctcp::ptr>(tcp)));

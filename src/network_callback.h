@@ -43,7 +43,7 @@ namespace NETWORK_POOL
 		virtual const preferred_tcp_settings& getSettings() = 0;
 		virtual const preferred_tcp_timeout_settings& getTimeoutSettings() = 0;
 
-		virtual void startup(const socket_id socketId, const CnetworkNode& remote) = 0;
+		virtual void startup(const socket_id socketId, const Csockaddr& remote) = 0;
 		virtual void shutdown() = 0;
 
 		virtual void drop(const void * const data, const size_t length) = 0;
@@ -58,11 +58,11 @@ namespace NETWORK_POOL
 
 		virtual void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& lenght) = 0;
 		virtual void deallocateForPacket(void * const buffer, const size_t lenght) = 0;
-		virtual void packet(const CnetworkNode& remote, const void * const data, const size_t length) = 0;
+		virtual void packet(const Csockaddr& remote, const void * const data, const size_t length) = 0;
 
 		virtual const preferred_udp_settings& getSettings() = 0;
 
-		virtual void startup(const socket_id socketId, const CnetworkNode& local) = 0;
+		virtual void startup(const socket_id socketId, const Csockaddr& local) = 0;
 		virtual void shutdown() = 0;
 
 		virtual void sendError(const int err) {}
@@ -80,7 +80,7 @@ namespace NETWORK_POOL
 
 		virtual CtcpCallback::ptr newTcpCallback() = 0;
 
-		virtual void startup(const CnetworkNode& local) = 0;
+		virtual void startup(const socket_id socketId, const Csockaddr& local) = 0;
 		virtual void shutdown() = 0;
 
 		virtual void listenError(const int err) {}

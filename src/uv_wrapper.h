@@ -62,6 +62,8 @@ namespace NETWORK_POOL
 
 		static void close(Casync * const async)
 		{
+			if (nullptr == async)
+				return;
 			if (!async->isClosing())
 			{
 				uv_close((uv_handle_t *)&async->m_async,
@@ -123,9 +125,12 @@ namespace NETWORK_POOL
 		uv_tcp_t m_tcp;
 		CnetworkPool *m_pool;
 		CtcpServerCallback::ptr m_callback;
+		socket_id m_socketId;
 
 		static void close(CtcpServer * const tcpServer)
 		{
+			if (nullptr == tcpServer)
+				return;
 			if (!tcpServer->isClosing())
 			{
 				uv_close((uv_handle_t *)&tcpServer->m_tcp,
@@ -166,6 +171,10 @@ namespace NETWORK_POOL
 		{
 			return m_callback;
 		}
+		inline socket_id getSocketId() const
+		{
+			return m_socketId;
+		}
 
 		inline bool isClosing() const
 		{
@@ -185,13 +194,14 @@ namespace NETWORK_POOL
 			return container_of(tcp, CtcpServer, m_tcp);
 		}
 
-		static ptr alloc(CnetworkPool * const pool, uv_loop_t * const loop, CtcpServerCallback::ptr&& callback)
+		static ptr alloc(CnetworkPool * const pool, uv_loop_t * const loop, CtcpServerCallback::ptr&& callback, const socket_id socketId)
 		{
 			CtcpServer *tcpServer = new (std::nothrow) CtcpServer();
 			if (nullptr == tcpServer)
 				return std::move(ptr());
 			tcpServer->m_pool = pool;
 			tcpServer->m_callback = std::forward<CtcpServerCallback::ptr>(callback);
+			tcpServer->m_socketId = socketId;
 			if (uv_tcp_init(loop, &tcpServer->m_tcp) != 0)
 			{
 				delete tcpServer;
@@ -217,6 +227,8 @@ namespace NETWORK_POOL
 
 		static void close(Ctcp * const tcp)
 		{
+			if (nullptr == tcp)
+				return;
 			if (tcp->m_tcpInited || tcp->m_timerInited)
 			{
 				if (!tcp->m_closing)
@@ -356,7 +368,7 @@ namespace NETWORK_POOL
 		static void shutdown_and_close(ptr&& tcp)
 		{
 			Ctcp *_tcp = tcp.release();
-			if (!_tcp->m_tcpInited)
+			if (nullptr == _tcp || !_tcp->m_tcpInited)
 				goto _ec;
 			if (!_tcp->m_closing && !_tcp->m_shutdown)
 			{
@@ -392,6 +404,8 @@ namespace NETWORK_POOL
 
 		static void close(Cudp * const udp)
 		{
+			if (nullptr == udp)
+				return;
 			if (!udp->isClosing())
 			{
 				uv_close((uv_handle_t *)&udp->m_udp,
