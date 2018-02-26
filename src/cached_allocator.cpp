@@ -93,7 +93,7 @@ namespace NETWORK_POOL
 			ptr = malloc(allocSize);
 		else
 		{
-			CA_FPRINTF((stderr, "fa use store.\n"));
+			CA_FPRINTF((stderr, "fa alloc use store.\n"));
 			s_globalLock.lock();
 			if (s_allocatorStore[size] != nullptr)
 			{
@@ -128,7 +128,7 @@ namespace NETWORK_POOL
 	{
 		if (nullptr == ptr)
 			return;
-		CA_FPRINTF((stderr, "fa free %u.\n", size));
+		CA_FPRINTF((stderr, "fa free.\n"));
 		void *org = (size_t *)ptr - 1;
 		size_t allocSize = *(size_t *)org;
 		size_t orgSize = allocSize - sizeof(size_t);
@@ -139,7 +139,7 @@ namespace NETWORK_POOL
 	#endif
 		if (orgSize >= s_maxAllocatorSlot || 0 == s_maxAllocatorStoreNumber[orgSize])
 			return free(org);
-		CA_FPRINTF((stderr, "fa use store.\n"));
+		CA_FPRINTF((stderr, "fa free use store.\n"));
 		s_globalLock.lock();
 		if (s_allocatorStoreCount[orgSize] < s_maxAllocatorStoreNumber[orgSize])
 		{
