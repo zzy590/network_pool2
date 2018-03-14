@@ -24,8 +24,8 @@
 #include "np_dbg.h"
 
 #define container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
-#define on_uv_error_goto_ec(_expr, _str) if ((_expr) != 0) { NP_FPRINTF(_str); goto _ec; }
-#define goto_ec(_str) { NP_FPRINTF(_str); goto _ec; }
+#define on_uv_error_goto_label(_expr, _str, _label) if ((_expr) != 0) { NP_FPRINTF(_str); goto _label; }
+#define goto_label(_str, _label) { NP_FPRINTF(_str); goto _label; }
 
 namespace NETWORK_POOL
 {
@@ -154,20 +154,20 @@ namespace NETWORK_POOL
 	{
 		CtcpServer::ptr tcpServer = CtcpServer::alloc(this, &m_loop, std::forward<CtcpServerCallback::ptr>(callback), ++m_socketIdCounter);
 		if (!tcpServer)
-			goto_ec((stderr, "Bind and listen tcp error with insufficient memory.\n"));
-		on_uv_error_goto_ec(
+			goto_label((stderr, "Bind and listen tcp error with insufficient memory.\n"), _ec);
+		on_uv_error_goto_label(
 			uv_tcp_bind(tcpServer->getTcp(), local.getSockaddr(), 0),
-			(stderr, "Bind and listen tcp bind error.\n"));
+			(stderr, "Bind and listen tcp bind error.\n"), _ec);
 		if (!tcpServer->customize())
-			goto_ec((stderr, "Bind and listen tcp customize error.\n"));
+			goto_label((stderr, "Bind and listen tcp customize error.\n"), _ec);
 		// Get binded local.
 		sockaddr_storage realLocal;
 		int len;
 		len = sizeof(realLocal);
-		on_uv_error_goto_ec(
+		on_uv_error_goto_label(
 			uv_tcp_getsockname(tcpServer->getTcp(), (sockaddr *)&realLocal, &len),
-			(stderr, "Bind and listen tcp getsockname error.\n"));
-		on_uv_error_goto_ec(
+			(stderr, "Bind and listen tcp getsockname error.\n"), _ec);
+		on_uv_error_goto_label(
 			uv_listen(tcpServer->getStream(), tcpServer->getCallback()->getSettings().tcp_backlog,
 			[](uv_stream_t *server, int status)
 		{
@@ -194,28 +194,28 @@ namespace NETWORK_POOL
 				// Auto free cb if not moved.
 				return;
 			}
-			on_uv_error_goto_ec(
+			on_uv_error_goto_label(
 				uv_accept(server, clientTcp->getStream()),
-				(stderr, "New incoming connection tcp accept error.\n"));
+				(stderr, "New incoming connection tcp accept error.\n"), _iec);
 			// Customize.
 			if (!clientTcp->customize())
-				goto_ec((stderr, "New incoming connection tcp customize error.\n"));
+				goto_label((stderr, "New incoming connection tcp customize error.\n"), _iec);
 			// Get peer.
 			sockaddr_storage peer;
 			int len;
 			len = sizeof(peer);
-			on_uv_error_goto_ec(
+			on_uv_error_goto_label(
 				uv_tcp_getpeername(clientTcp->getTcp(), (sockaddr *)&peer, &len),
-				(stderr, "New incoming connection tcp getpeername error.\n"));
+				(stderr, "New incoming connection tcp getpeername error.\n"), _iec);
 			// Start read with timeout.
 			if (!pool->tcpReadWithTimeout(clientTcp.get()))
-				goto_ec((stderr, "New incoming connection tcp read start error.\n"));
+				goto_label((stderr, "New incoming connection tcp read start error.\n"), _iec);
 			// Startup connection.
 			pool->startupTcpConnection(std::move(clientTcp), Csockaddr((const sockaddr *)&peer, len));
 			return;
-		_ec:; // Auto free tcp and cb if not moved.
+		_iec:; // Auto free tcp and cb if not moved.
 		}),
-			(stderr, "Bind and listen tcp listen error.\n"));
+			(stderr, "Bind and listen tcp listen error.\n"), _ec);
 		tcpServer->getCallback()->startup(tcpServer->getSocketId(), Csockaddr((const sockaddr *)&realLocal, len));
 		return std::move(tcpServer);
 	_ec:
@@ -233,10 +233,10 @@ namespace NETWORK_POOL
 		}
 		Ctcp::ptr tcp = Ctcp::alloc(this, &m_loop, std::forward<CtcpCallback::ptr>(callback), ++m_socketIdCounter);
 		if (!tcp)
-			goto_ec((stderr, "Connect tcp error with insufficient memory.\n"));
+			goto_label((stderr, "Connect tcp error with insufficient memory.\n"), _ec);
 		if (!setTcpTimeout(tcp.get(), tcp->getCallback()->getTimeoutSettings().tcp_connect_timeout_in_seconds))
-			goto_ec((stderr, "Connect tcp error with set timeout error.\n"));
-		on_uv_error_goto_ec(
+			goto_label((stderr, "Connect tcp error with set timeout error.\n"), _ec);
+		on_uv_error_goto_label(
 			uv_tcp_connect(connect, tcp->getTcp(), remote.getSockaddr(),
 			[](uv_connect_t *req, int status)
 		{
@@ -252,26 +252,26 @@ namespace NETWORK_POOL
 			__free(req);
 			// Error?
 			if (status < 0 || !tcp || tcp->isClosing())
-				goto_ec((stderr, "Connect tcp error %s.\n", uv_strerror(status)));
+				goto_label((stderr, "Connect tcp error %s.\n", uv_strerror(status)), _iec);
 			// Customize.
 			if (!tcp->customize())
-				goto_ec((stderr, "Connect tcp customize error.\n"));
+				goto_label((stderr, "Connect tcp customize error.\n"), _iec);
 			// Get peer.
 			sockaddr_storage peer;
 			int len;
 			len = sizeof(peer);
-			on_uv_error_goto_ec(
+			on_uv_error_goto_label(
 				uv_tcp_getpeername(tcp->getTcp(), (sockaddr *)&peer, &len),
-				(stderr, "New incoming connection tcp getpeername error.\n"));
+				(stderr, "New incoming connection tcp getpeername error.\n"), _iec);
 			// Start read with timeout.
 			if (!pool->tcpReadWithTimeout(tcp.get()))
-				goto_ec((stderr, "Connect tcp read start error.\n"));
+				goto_label((stderr, "Connect tcp read start error.\n"), _iec);
 			// Startup connection.
 			pool->startupTcpConnection(std::move(tcp), Csockaddr((const sockaddr *)&peer, len));
 			return;
-		_ec:; // Auto free tcp if notr moved.
+		_iec:; // Auto free tcp if notr moved.
 		}),
-			(stderr, "Connect tcp error with connect error.\n"));
+			(stderr, "Connect tcp error with connect error.\n"), _ec);
 		return std::move(tcp);
 	_ec:
 		// Auto free tcp if not moved.
@@ -322,17 +322,17 @@ namespace NETWORK_POOL
 	{
 		Cudp::ptr udp = Cudp::alloc(this, &m_loop, std::forward<CudpCallback::ptr>(callback), ++m_socketIdCounter);
 		if (!udp)
-			goto_ec((stderr, "Bind and listen udp error with insufficient memory.\n"));
-		on_uv_error_goto_ec(
+			goto_label((stderr, "Bind and listen udp error with insufficient memory.\n"), _ec);
+		on_uv_error_goto_label(
 			uv_udp_bind(udp->getUdp(), local.getSockaddr(), 0),
-			(stderr, "Bind and listen udp bind error.\n"));
+			(stderr, "Bind and listen udp bind error.\n"), _ec);
 		// Get binded local.
 		sockaddr_storage realLocal;
 		int len;
 		len = sizeof(realLocal);
-		on_uv_error_goto_ec(
+		on_uv_error_goto_label(
 			uv_udp_getsockname(udp->getUdp(), (sockaddr *)&realLocal, &len),
-			(stderr, "Bind and listen udp getsockname error.\n"));
+			(stderr, "Bind and listen udp getsockname error.\n"), _ec);
 		// Start recv.(we cannot use micro because of '#ifdef')
 		if (uv_udp_recv_start(udp->getUdp(),
 			[](uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf)
@@ -368,7 +368,7 @@ namespace NETWORK_POOL
 			else
 				udp->getCallback()->deallocateForPacket(buf->base, buf->len);
 		}) != 0)
-			goto_ec((stderr, "Bind and listen udp listen error.\n"));
+			goto_label((stderr, "Bind and listen udp listen error.\n"), _ec);
 		udp->getCallback()->startup(udp->getSocketId(), Csockaddr((const sockaddr *)&realLocal, len));
 		return std::move(udp);
 	_ec:
