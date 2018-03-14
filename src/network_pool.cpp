@@ -551,7 +551,7 @@ namespace NETWORK_POOL
 		uv_loop_close(&m_loop);
 	}
 
-	inline void CnetworkPool::startupTcpConnection(Ctcp::ptr&& tcp, const Csockaddr& remote)
+	void CnetworkPool::startupTcpConnection(Ctcp::ptr&& tcp, const Csockaddr& remote)
 	{
 		// Add map.
 		auto ib = m_socketId2stream.insert(std::make_pair(tcp->getSocketId(), std::forward<Ctcp::ptr>(tcp)));
@@ -560,7 +560,7 @@ namespace NETWORK_POOL
 	}
 
 	// This function is idempotent, and can be called any time when tcp is valid(closing is also ok).
-	inline void CnetworkPool::shutdownTcpConnection(Ctcp * const tcp, const bool bShutdown)
+	void CnetworkPool::shutdownTcpConnection(Ctcp * const tcp, const bool bShutdown)
 	{
 		// Clean map.
 		auto it = m_socketId2stream.find(tcp->getSocketId());

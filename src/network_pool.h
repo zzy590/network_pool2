@@ -186,8 +186,8 @@ namespace NETWORK_POOL
 		void internalThread();
 
 		// Caution! Call following function(s) may cause iterator of m_socketId2stream invalid.
-		inline void startupTcpConnection(Ctcp::ptr&& tcp, const Csockaddr& remote);
-		inline void shutdownTcpConnection(Ctcp * const tcp, const bool bShutdown = false);
+		void startupTcpConnection(Ctcp::ptr&& tcp, const Csockaddr& remote);
+		void shutdownTcpConnection(Ctcp * const tcp, const bool bShutdown = false);
 
 		void bind(__pending_bind&& req)
 		{
