@@ -47,7 +47,7 @@ namespace NETWORK_POOL
 		std::vector<std::thread> m_threads;
 
 		std::mutex m_lock;
-		bool m_exit;
+		volatile bool m_exit;
 		std::condition_variable m_cv;
 		std::deque<Ctask::ptr> m_tasks;
 
