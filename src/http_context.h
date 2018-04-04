@@ -27,18 +27,13 @@
 #include <unordered_map>
 #include <utility>
 
-#include "buffer.h"
+#include "recv_buffer.h"
 
 namespace NETWORK_POOL
 {
-	class ChttpContext
+	class ChttpContext : public CrecvBuffer
 	{
 	private:
-		size_t m_maxBufferSize;
-
-		Cbuffer m_buffer;
-		size_t m_nowIndex;
-
 		size_t m_analysisIndex;
 		enum __http_state
 		{
@@ -63,27 +58,18 @@ namespace NETWORK_POOL
 
 		void init()
 		{
-			if (0 == m_buffer.getMaxLength()) // Only init at first time.
-			{
-				if (m_maxBufferSize < 0x1000)
-					m_maxBufferSize = 0x1000;
-
-				m_buffer.resize(0x1000); // 4KB
-				m_nowIndex = 0;
-
-				m_analysisIndex = 0;
-				m_state = state_start;
-				m_lines.clear();
-				m_lines.reserve(16);
-				m_headerSize = 0;
-				m_bKeepAlive = false;
-				m_bChunked = false;
-				m_contentLength = 0;
-				m_nowChunkSize = 0;
-				m_bChunkSizeStart = false;
-				m_bChunkSizeDone = false;
-				m_chunks.clear();
-			}
+			m_analysisIndex = 0;
+			m_state = state_start;
+			m_lines.clear();
+			m_lines.reserve(16);
+			m_headerSize = 0;
+			m_bKeepAlive = false;
+			m_bChunked = false;
+			m_contentLength = 0;
+			m_nowChunkSize = 0;
+			m_bChunkSizeStart = false;
+			m_bChunkSizeDone = false;
+			m_chunks.clear();
 		}
 
 		#ifndef _MSC_VER
@@ -102,7 +88,7 @@ namespace NETWORK_POOL
 
 		void decoderHeaderAndUpdateState()
 		{
-			const char *ptr = (const char *)m_buffer.getData();
+			const char *ptr = (const char *)CrecvBuffer::buffer().getData();
 			for (const auto& lineInfo : m_lines)
 			{
 				if (lineInfo.first > m_headerSize) // Only deal with header.
@@ -144,39 +130,24 @@ namespace NETWORK_POOL
 
 	public:
 		ChttpContext(const size_t maxBufferSize = 0x1000000) // 16MB
-			:m_maxBufferSize(maxBufferSize) {}
-
-		void prepareBuffer(void *& buffer, size_t& length)
+			:CrecvBuffer(maxBufferSize)
 		{
 			init();
-			if (m_buffer.getLength() - m_nowIndex < 0x800) // 2KB
-			{
-				if (m_buffer.getLength() * 2 > m_maxBufferSize)
-					m_buffer.resize(m_maxBufferSize, m_nowIndex);
-				else
-					m_buffer.resize(m_buffer.getLength() * 2, m_nowIndex);
-			}
-			length = m_buffer.getLength() - m_nowIndex;
-			if (0 == length)
-				buffer = nullptr;
-			else
-				buffer = (char *)m_buffer.getData() + m_nowIndex;
-		}
-
-		void recvPush(size_t length)
-		{
-			if (m_nowIndex + length <= m_buffer.getLength())
-				m_nowIndex += length;
 		}
 
 		bool analysis()
 		{
+			if (CrecvBuffer::bOverflow())
+			{
+				m_state = state_bad;
+				return true;
+			}
 		_again:
 			if (state_done == m_state || state_bad == m_state)
 				return true;
-			if (m_nowIndex <= m_analysisIndex) // First check whether something to decode.
+			if (CrecvBuffer::nowIndex() <= m_analysisIndex) // First check whether something to decode.
 				return false;
-			char *ptr = (char *)m_buffer.getData();
+			char *ptr = (char *)CrecvBuffer::buffer().getData();
 			switch (m_state)
 			{
 			case state_start:
@@ -215,11 +186,11 @@ namespace NETWORK_POOL
 						}
 						m_lines.push_back(std::make_pair(m_analysisIndex + 1, -1));
 					}
-				} while (++m_analysisIndex < m_nowIndex);
+				} while (++m_analysisIndex < CrecvBuffer::nowIndex());
 				break;
 
 			case state_read_body:
-				if (m_nowIndex - m_analysisIndex >= m_contentLength)
+				if (CrecvBuffer::nowIndex() - m_analysisIndex >= m_contentLength)
 				{
 					m_chunks.push_back(std::make_pair(m_analysisIndex, m_contentLength));
 					m_analysisIndex += m_contentLength;
@@ -273,11 +244,11 @@ namespace NETWORK_POOL
 								m_bChunkSizeDone = true;
 						}
 					}
-				} while (++m_analysisIndex < m_nowIndex);
+				} while (++m_analysisIndex < CrecvBuffer::nowIndex());
 				break;
 
 			case state_read_chunk_body:
-				if (m_nowIndex - m_analysisIndex >= m_nowChunkSize + 2) // With the ending '\r\n'.
+				if (CrecvBuffer::nowIndex() - m_analysisIndex >= m_nowChunkSize + 2) // With the ending '\r\n'.
 				{
 					m_chunks.push_back(std::make_pair(m_analysisIndex, m_nowChunkSize));
 					m_analysisIndex += m_nowChunkSize + 2;
@@ -311,7 +282,7 @@ namespace NETWORK_POOL
 						}
 						m_lines.push_back(std::make_pair(m_analysisIndex + 1, -1));
 					}
-				} while (++m_analysisIndex < m_nowIndex);
+				} while (++m_analysisIndex < CrecvBuffer::nowIndex());
 				break;
 
 			case state_done:
@@ -340,7 +311,7 @@ namespace NETWORK_POOL
 		{
 			if (m_state != state_done)
 				return false;
-			const char *line = (const char *)m_buffer.getData() + m_lines[0].first; // First line.
+			const char *line = (const char *)CrecvBuffer::buffer().getData() + m_lines[0].first; // First line.
 			const char *b1 = strchr(line, ' ');
 			if (nullptr == b1)
 				return false;
@@ -357,7 +328,7 @@ namespace NETWORK_POOL
 		{
 			if (m_state != state_done)
 				return false;
-			const char *ptr = (const char *)m_buffer.getData();
+			const char *ptr = (const char *)CrecvBuffer::buffer().getData();
 			for (const auto& lineInfo : m_lines)
 			{
 				if ((size_t)-1 == lineInfo.second) // Unknown length.
@@ -393,7 +364,7 @@ namespace NETWORK_POOL
 			for (const auto& pair : m_chunks)
 				total += pair.second;
 			buffer.resize(total);
-			char *src = (char *)m_buffer.getData();
+			char *src = (char *)CrecvBuffer::buffer().getData();
 			char *dst = (char *)buffer.getData();
 			for (const auto& pair : m_chunks)
 			{
@@ -409,10 +380,10 @@ namespace NETWORK_POOL
 				return false;
 
 			// Move current to former.
-			former.m_maxBufferSize = m_maxBufferSize;
+			former.maxBufferSize() = CrecvBuffer::maxBufferSize();
 
-			former.m_buffer.set(m_buffer.getData(), m_analysisIndex);
-			former.m_nowIndex = m_analysisIndex;
+			former.buffer().set(CrecvBuffer::buffer().getData(), m_analysisIndex);
+			former.nowIndex() = m_analysisIndex;
 
 			former.m_analysisIndex = m_analysisIndex;
 			former.m_state = state_done;
@@ -427,24 +398,13 @@ namespace NETWORK_POOL
 			former.m_chunks = std::move(m_chunks);
 
 			// Move extra.
-			size_t extra = m_nowIndex - m_analysisIndex;
-			char *ptr = (char *)m_buffer.getData();
+			size_t extra = CrecvBuffer::nowIndex() - m_analysisIndex;
+			char *ptr = (char *)CrecvBuffer::buffer().getData();
 			memmove(ptr, ptr + m_analysisIndex, extra);
-			m_nowIndex = extra;
+			CrecvBuffer::nowIndex() = extra;
 
 			// Set others.
-			m_analysisIndex = 0;
-			m_state = state_start;
-			m_lines.clear();
-			m_lines.reserve(16);
-			m_headerSize = 0;
-			m_bKeepAlive = false;
-			m_bChunked = false;
-			m_contentLength = 0;
-			m_nowChunkSize = 0;
-			m_bChunkSizeStart = false;
-			m_bChunkSizeDone = false;
-			m_chunks.clear();
+			init();
 			return true;
 		}
 	};

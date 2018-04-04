@@ -31,6 +31,7 @@
 #include "network_node.h"
 #include "uv_wrapper.h"
 #include "network_pool.h"
+#include "recv_buffer.h"
 
 #define CA_DBG 0
 #if CA_DBG
@@ -74,6 +75,7 @@ namespace NETWORK_POOL
 			set_max_store_number(sizeof(Cudp), 0);
 			set_max_store_number(sizeof(CnetworkPool::__write_with_info), 4096);
 			set_max_store_number(sizeof(CnetworkPool::__udp_send_with_info), 4096);
+			set_max_store_number(RECV_BUFFER_SIZE, 4096);
 			#undef set_max_store_number
 		});
 	}

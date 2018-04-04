@@ -41,16 +41,18 @@ namespace NETWORK_POOL
 		ChttpSession(CnetworkPool *pool)
 			:m_pool(pool) {}
 
-		void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& lenght)
+		void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& length)
 		{
-			m_context.prepareBuffer(buffer, lenght);
+			ChttpContext::allocateBuffer(suggestedSize, buffer, length);
 		}
-		void deallocateForPacket(void * const buffer, const size_t lenght)
+		void deallocateForPacket(void * const buffer, const size_t length, const size_t dataLength)
 		{
+			ChttpContext::deallocateBuffer(buffer, length, dataLength);
 		}
 		void packet(const void * const data, const size_t length)
 		{
-			m_context.recvPush(length);
+			m_context.pushBuffer(data, length);
+			m_context.merge();
 			bool bAgain;
 			do
 			{

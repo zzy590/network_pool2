@@ -36,8 +36,8 @@ namespace NETWORK_POOL
 
 		virtual ~CtcpCallback() {}
 
-		virtual void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& lenght) = 0;
-		virtual void deallocateForPacket(void * const buffer, const size_t lenght) = 0;
+		virtual void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& length) = 0;
+		virtual void deallocateForPacket(void * const buffer, const size_t length, const size_t dataLength) = 0;
 		virtual void packet(const void * const data, const size_t length) = 0;
 
 		virtual const preferred_tcp_settings& getSettings() = 0;
@@ -56,8 +56,8 @@ namespace NETWORK_POOL
 
 		virtual ~CudpCallback() {}
 
-		virtual void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& lenght) = 0;
-		virtual void deallocateForPacket(void * const buffer, const size_t lenght) = 0;
+		virtual void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& length) = 0;
+		virtual void deallocateForPacket(void * const buffer, const size_t length) = 0;
 		virtual void packet(const Csockaddr& remote, const void * const data, const size_t length) = 0;
 
 		virtual const preferred_udp_settings& getSettings() = 0;

@@ -70,7 +70,7 @@ namespace NETWORK_POOL
 			{
 				// Report message.
 				tcp->getCallback()->packet(buf->base, nread);
-				tcp->getCallback()->deallocateForPacket(buf->base, buf->len);
+				tcp->getCallback()->deallocateForPacket(buf->base, buf->len, nread);
 				// Reset idle close.
 				if (!tcp->isClosing() && !tcp->isShutdown() && 0 == uv_stream_get_write_queue_size(tcp->getStream()))
 				{
@@ -80,7 +80,7 @@ namespace NETWORK_POOL
 			}
 			else
 			{
-				tcp->getCallback()->deallocateForPacket(buf->base, buf->len);
+				tcp->getCallback()->deallocateForPacket(buf->base, buf->len, 0);
 				if (nread < 0)
 				{
 					if (nread != UV_EOF)
