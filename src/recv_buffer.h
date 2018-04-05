@@ -35,6 +35,7 @@ namespace NETWORK_POOL
 	class CrecvBuffer
 	{
 	private:
+		size_t m_initialBufferSize;
 		size_t m_maxBufferSize;
 
 		Cbuffer m_buffer;
@@ -45,8 +46,8 @@ namespace NETWORK_POOL
 		std::deque<std::pair<void *, size_t>> m_rawBuffers;
 
 	public:
-		CrecvBuffer(const size_t maxBufferSize)
-			:m_maxBufferSize(maxBufferSize), m_nowIndex(0), m_bOverflow(false) {}
+		CrecvBuffer(const size_t initialBufferSize, const size_t maxBufferSize)
+			:m_initialBufferSize(initialBufferSize), m_maxBufferSize(maxBufferSize), m_nowIndex(0), m_bOverflow(false) {}
 
 		~CrecvBuffer()
 		{
@@ -55,10 +56,14 @@ namespace NETWORK_POOL
 			m_rawBuffers.clear();
 		}
 
+		//
+		// Following 3 functions should be called in event loop.
+		//
+
 		static void allocateBuffer(const size_t suggestedSize, void *& buffer, size_t& length)
 		{
 			buffer = __alloc(RECV_BUFFER_SIZE);
-			length = suggestedSize<RECV_BUFFER_SIZE ? suggestedSize : RECV_BUFFER_SIZE;
+			length = suggestedSize < RECV_BUFFER_SIZE ? suggestedSize : RECV_BUFFER_SIZE;
 		}
 
 		void pushBuffer(const void * const data, const size_t length)
@@ -77,16 +82,16 @@ namespace NETWORK_POOL
 		}
 
 		//
-		// Following functions must be called in a single thread.
+		// Following functions should be called in a single thread or worker thread.
 		//
 
 		void merge()
 		{
 			if (0 == m_buffer.getMaxLength())
 			{
-				if (m_maxBufferSize < 0x1000)
-					m_maxBufferSize = 0x1000; // At least 4KB.
-				m_buffer.resize(0x1000); // Init to 4KB.
+				if (m_maxBufferSize < m_initialBufferSize)
+					m_maxBufferSize = m_initialBufferSize;
+				m_buffer.resize(m_initialBufferSize);
 			}
 			{
 				std::lock_guard<std::mutex> guard(m_lock);
@@ -117,11 +122,15 @@ namespace NETWORK_POOL
 			}
 		}
 
-		const bool& bOverflow() const
+		const size_t& initialBufferSize() const
 		{
-			return m_bOverflow;
+			return m_initialBufferSize;
 		}
-		
+		size_t& initialBufferSize()
+		{
+			return m_initialBufferSize;
+		}
+
 		const size_t& maxBufferSize() const
 		{
 			return m_maxBufferSize;
@@ -147,6 +156,15 @@ namespace NETWORK_POOL
 		size_t& nowIndex()
 		{
 			return m_nowIndex;
+		}
+
+		const bool& bOverflow() const
+		{
+			return m_bOverflow;
+		}
+		bool& bOverflow()
+		{
+			return m_bOverflow;
 		}
 	};
 }

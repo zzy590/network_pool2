@@ -354,7 +354,7 @@ namespace NETWORK_POOL
 			Cudp *udp = Cudp::obtain(handle);
 			if (nread < 0)
 			{
-				udp->getCallback()->deallocateForPacket(buf->base, buf->len);
+				udp->getCallback()->deallocateForPacket(buf->base, buf->len, 0);
 				NP_FPRINTF((stderr, "Recv udp error %s.\n", uv_err_name((int)nread)));
 				// Just report this error.
 				udp->getCallback()->recvError((int)nread);
@@ -363,10 +363,10 @@ namespace NETWORK_POOL
 			{
 				// Report message.
 				udp->getCallback()->packet(Csockaddr(addr, sizeof(sockaddr_storage)), buf->base, nread);
-				udp->getCallback()->deallocateForPacket(buf->base, buf->len);
+				udp->getCallback()->deallocateForPacket(buf->base, buf->len, nread);
 			}
 			else
-				udp->getCallback()->deallocateForPacket(buf->base, buf->len);
+				udp->getCallback()->deallocateForPacket(buf->base, buf->len, 0);
 		}) != 0)
 			goto_label((stderr, "Bind and listen udp listen error.\n"), _ec);
 		udp->getCallback()->startup(udp->getSocketId(), Csockaddr((const sockaddr *)&realLocal, len));

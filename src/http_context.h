@@ -34,10 +34,10 @@ namespace NETWORK_POOL
 	class ChttpContext : public CrecvBuffer
 	{
 	private:
-		size_t m_analysisIndex;
 		enum __http_state
 		{
-			state_start = 0,
+			state_uninit = 0,
+			state_start,
 			state_read_header,
 			state_read_body,
 			state_read_chunk_header,
@@ -46,6 +46,8 @@ namespace NETWORK_POOL
 			state_done,
 			state_bad
 		} m_state;
+
+		size_t m_analysisIndex;
 		std::vector<std::pair<size_t, size_t>> m_lines; // <startIndex, length>
 		size_t m_headerSize;
 		bool m_bKeepAlive;
@@ -58,8 +60,8 @@ namespace NETWORK_POOL
 
 		void init()
 		{
-			m_analysisIndex = 0;
 			m_state = state_start;
+			m_analysisIndex = 0;
 			m_lines.clear();
 			m_lines.reserve(16);
 			m_headerSize = 0;
@@ -129,11 +131,8 @@ namespace NETWORK_POOL
 		}
 
 	public:
-		ChttpContext(const size_t maxBufferSize = 0x1000000) // 16MB
-			:CrecvBuffer(maxBufferSize)
-		{
-			init();
-		}
+		ChttpContext(const size_t initialBufferSize = 0x1000, const size_t maxBufferSize = 0x1000000) // 4KB-16MB
+			:CrecvBuffer(initialBufferSize, maxBufferSize), m_state(state_uninit) {}
 
 		bool analysis()
 		{
@@ -142,6 +141,8 @@ namespace NETWORK_POOL
 				m_state = state_bad;
 				return true;
 			}
+			if (state_uninit == m_state)
+				init();
 		_again:
 			if (state_done == m_state || state_bad == m_state)
 				return true;
@@ -374,19 +375,65 @@ namespace NETWORK_POOL
 			return true;
 		}
 
+		bool extract(ChttpContext& copy)
+		{
+			if (m_state != state_done)
+				return false;
+
+			// Move current to former.
+			copy.initialBufferSize() = CrecvBuffer::initialBufferSize();
+			copy.maxBufferSize() = CrecvBuffer::maxBufferSize();
+
+			copy.buffer().set(CrecvBuffer::buffer().getData(), m_analysisIndex);
+			copy.nowIndex() = m_analysisIndex;
+			copy.bOverflow() = CrecvBuffer::bOverflow();
+
+			copy.m_state = state_done;
+			copy.m_analysisIndex = m_analysisIndex;
+			copy.m_lines = m_lines;
+			copy.m_headerSize = m_headerSize;
+			copy.m_bKeepAlive = m_bKeepAlive;
+			copy.m_bChunked = m_bChunked;
+			copy.m_contentLength = m_contentLength;
+			copy.m_nowChunkSize = 0;
+			copy.m_bChunkSizeStart = false;
+			copy.m_bChunkSizeDone = false;
+			copy.m_chunks = m_chunks;
+
+			return true;
+		}
+
+		bool clear()
+		{
+			if (m_state != state_done)
+				return false;
+
+			// Move extra.
+			size_t extra = CrecvBuffer::nowIndex() - m_analysisIndex;
+			char *ptr = (char *)CrecvBuffer::buffer().getData();
+			memmove(ptr, ptr + m_analysisIndex, extra);
+			CrecvBuffer::nowIndex() = extra;
+
+			// Set for next.
+			init();
+			return true;
+		}
+
 		bool reinitForNext(ChttpContext& former)
 		{
 			if (m_state != state_done)
 				return false;
 
 			// Move current to former.
+			former.initialBufferSize() = CrecvBuffer::initialBufferSize();
 			former.maxBufferSize() = CrecvBuffer::maxBufferSize();
 
 			former.buffer().set(CrecvBuffer::buffer().getData(), m_analysisIndex);
 			former.nowIndex() = m_analysisIndex;
+			former.bOverflow() = CrecvBuffer::bOverflow();
 
-			former.m_analysisIndex = m_analysisIndex;
 			former.m_state = state_done;
+			former.m_analysisIndex = m_analysisIndex;
 			former.m_lines = std::move(m_lines);
 			former.m_headerSize = m_headerSize;
 			former.m_bKeepAlive = m_bKeepAlive;
@@ -403,7 +450,7 @@ namespace NETWORK_POOL
 			memmove(ptr, ptr + m_analysisIndex, extra);
 			CrecvBuffer::nowIndex() = extra;
 
-			// Set others.
+			// Set for next.
 			init();
 			return true;
 		}

@@ -61,13 +61,12 @@ namespace NETWORK_POOL
 				{
 					if (m_context.isGood())
 					{
-						ChttpContext readyContext;
-						m_context.reinitForNext(readyContext);
 						// Deal with request.
 						static const std::string resp("HTTP/1.1 200 OK\r\nConnection:Keep-Alive\r\nContent-Length: 10\r\n\r\n0123456789");
 						m_pool->sendTcp(m_id, resp.data(), resp.length());
-						if (!readyContext.isKeepAlive())
+						if (!m_context.isKeepAlive())
 							m_pool->close(m_id);
+						m_context.clear();
 						bAgain = true;
 					}
 					else

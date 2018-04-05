@@ -75,7 +75,7 @@ namespace NETWORK_POOL
 			set_max_store_number(sizeof(Cudp), 0);
 			set_max_store_number(sizeof(CnetworkPool::__write_with_info), 4096);
 			set_max_store_number(sizeof(CnetworkPool::__udp_send_with_info), 4096);
-			set_max_store_number(RECV_BUFFER_SIZE, 4096);
+			set_max_store_number(RECV_BUFFER_SIZE, 16384);
 			#undef set_max_store_number
 		});
 	}
