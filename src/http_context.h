@@ -26,14 +26,18 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <mutex>
 
 #include "recv_buffer.h"
+#include "cached_allocator.h"
 
 namespace NETWORK_POOL
 {
-	class ChttpContext : public CrecvBuffer
+	class ChttpContext : public CrecvBuffer, public CcachedAllocator
 	{
 	private:
+		std::mutex m_contextLock;
+
 		enum __http_state
 		{
 			state_uninit = 0,
@@ -133,6 +137,11 @@ namespace NETWORK_POOL
 	public:
 		ChttpContext(const size_t initialBufferSize = 0x1000, const size_t maxBufferSize = 0x1000000) // 4KB-16MB
 			:CrecvBuffer(initialBufferSize, maxBufferSize), m_state(state_uninit) {}
+
+		std::mutex& getContextLock()
+		{
+			return m_contextLock;
+		}
 
 		bool analysis()
 		{

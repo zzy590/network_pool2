@@ -32,6 +32,9 @@
 #include "uv_wrapper.h"
 #include "network_pool.h"
 #include "recv_buffer.h"
+#include "mt_shared_ptr.h"
+#include "http_context.h"
+#include "json_context.h"
 
 #define CA_DBG 0
 #if CA_DBG
@@ -62,7 +65,7 @@ namespace NETWORK_POOL
 	{
 		std::call_once(s_storeNumberInit, []()
 		{
-			#define set_max_store_number(_s, _n) { if ((_s) < s_maxAllocatorSlot) s_maxAllocatorStoreNumber[(_s)] = (_n); }
+		#define set_max_store_number(_s, _n) { if ((_s) < s_maxAllocatorSlot && (_n) > s_maxAllocatorStoreNumber[(_s)]) s_maxAllocatorStoreNumber[(_s)] = (_n); }
 			set_max_store_number(sizeof(uv_shutdown_t), 1024);
 			set_max_store_number(sizeof(uv_connect_t), 1024);
 			set_max_store_number(sizeof(Cbuffer), 512);
@@ -76,7 +79,11 @@ namespace NETWORK_POOL
 			set_max_store_number(sizeof(CnetworkPool::__write_with_info), 4096);
 			set_max_store_number(sizeof(CnetworkPool::__udp_send_with_info), 4096);
 			set_max_store_number(RECV_BUFFER_SIZE, 16384);
-			#undef set_max_store_number
+			set_max_store_number(sizeof(CatomicCounter), 16384);
+			set_max_store_number(sizeof(CmtSharedPtr<int>), 0);
+			set_max_store_number(sizeof(ChttpContext), 16384);
+			set_max_store_number(sizeof(CjsonContext), 16384);
+		#undef set_max_store_number
 		});
 	}
 
@@ -159,7 +166,8 @@ namespace NETWORK_POOL
 		if (size >= s_maxAllocatorSlot)
 			return false;
 		s_globalLock.lock();
-		s_maxAllocatorStoreNumber[size] = cacheNumber;
+		if (cacheNumber > s_maxAllocatorStoreNumber[size])
+			s_maxAllocatorStoreNumber[size] = cacheNumber;
 		s_globalLock.unlock();
 		return true;
 	}

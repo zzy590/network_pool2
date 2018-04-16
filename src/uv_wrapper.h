@@ -32,7 +32,7 @@
 
 namespace NETWORK_POOL
 {
-	template <class T>
+	template<class T>
 	struct __uv_wrapper_deleter
 	{
 		void operator()(T * const p)
@@ -74,7 +74,7 @@ namespace NETWORK_POOL
 			}
 		}
 
-		template <class T>
+		template<class T>
 		friend struct __uv_wrapper_deleter;
 
 	public:
@@ -141,7 +141,7 @@ namespace NETWORK_POOL
 			}
 		}
 
-		template <class T>
+		template<class T>
 		friend struct __uv_wrapper_deleter;
 
 	public:
@@ -259,7 +259,7 @@ namespace NETWORK_POOL
 				delete tcp;
 		}
 
-		template <class T>
+		template<class T>
 		friend struct __uv_wrapper_deleter;
 
 	public:
@@ -416,7 +416,7 @@ namespace NETWORK_POOL
 			}
 		}
 
-		template <class T>
+		template<class T>
 		friend struct __uv_wrapper_deleter;
 
 	public:

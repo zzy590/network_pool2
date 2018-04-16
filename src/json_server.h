@@ -25,26 +25,27 @@
 
 #include "network_pool.h"
 #include "cached_allocator.h"
-#include "http_context.h"
+#include "json_context.h"
 #include "mt_shared_ptr.h"
 #include "work_queue.h"
 
 namespace NETWORK_POOL
 {
-	class ChttpTask : public Ctask, public CcachedAllocator
+	class CjsonTask : public Ctask, public CcachedAllocator
 	{
 	private:
 		CnetworkPool& m_pool;
 		socket_id m_socketId;
-		CmtSharedPtr<ChttpContext> m_context;
+		CmtSharedPtr<CjsonContext> m_context;
 
 	public:
-		ChttpTask(CnetworkPool& pool, socket_id socketId, CmtSharedPtr<ChttpContext> context)
+		CjsonTask(CnetworkPool& pool, socket_id socketId, CmtSharedPtr<CjsonContext> context)
 			:m_pool(pool), m_socketId(socketId), m_context(context) {}
 
 		void run()
 		{
 			std::lock_guard<std::mutex> guard(m_context->getContextLock());
+			bool bNeedClear = false;
 			bool bAgain;
 			do
 			{
@@ -52,29 +53,27 @@ namespace NETWORK_POOL
 				m_context->merge();
 				if (m_context->analysis())
 				{
-					if (m_context->isGood())
+					Cbuffer json;
+					if (m_context->extract(json))
 					{
 						// Deal with the request.
+						
+						std::cout << "json: " << std::string((const char *)json.getData(), json.getLength()) << std::endl;
 
-						static const std::string resp("HTTP/1.1 200 OK\r\nConnection:Keep-Alive\r\nContent-Length: 10\r\n\r\n0123456789");
-						m_pool.sendTcp(m_socketId, resp.data(), resp.length());
-						if (!m_context->isKeepAlive())
-						{
-							m_pool.close(m_socketId);
-							break;
-						}
-
-						m_context->clear();
+						m_context->restart();
+						bNeedClear = true;
 						bAgain = true;
 					}
 					else
 						m_pool.close(m_socketId);
 				}
 			} while (bAgain);
+			if (bNeedClear)
+				m_context->clear();
 		}
 	};
 
-	class ChttpSession : public CtcpCallback, public CcachedAllocator
+	class CjsonSession : public CtcpCallback, public CcachedAllocator
 	{
 	private:
 		preferred_tcp_settings m_defaultSettings;
@@ -84,10 +83,10 @@ namespace NETWORK_POOL
 		CworkQueue& m_workQueue;
 
 		socket_id m_socketId;
-		CmtSharedPtr<ChttpContext> m_context;
+		CmtSharedPtr<CjsonContext> m_context;
 
 	public:
-		ChttpSession(CnetworkPool& pool, CworkQueue& workQueue)
+		CjsonSession(CnetworkPool& pool, CworkQueue& workQueue)
 			:m_pool(pool), m_workQueue(workQueue) {}
 
 		void allocateForPacket(const size_t suggestedSize, void *& buffer, size_t& length)
@@ -101,7 +100,7 @@ namespace NETWORK_POOL
 		void packet(const void * const data, const size_t length)
 		{
 			m_context->pushBuffer(data, length);
-			m_workQueue.pushTask(std::move(Ctask::ptr(new ChttpTask(m_pool, m_socketId, m_context))));
+			m_workQueue.pushTask(std::move(Ctask::ptr(new CjsonTask(m_pool, m_socketId, m_context))));
 		}
 
 		const preferred_tcp_settings& getSettings()
@@ -116,7 +115,7 @@ namespace NETWORK_POOL
 		void startup(const socket_id socketId, const Csockaddr& remote)
 		{
 			m_socketId = socketId;
-			m_context.reset(new ChttpContext());
+			m_context.reset(new CjsonContext());
 		}
 		void shutdown()
 		{
@@ -128,7 +127,7 @@ namespace NETWORK_POOL
 		}
 	};
 
-	class ChttpServer : public CtcpServerCallback, public CcachedAllocator
+	class CjsonServer : public CtcpServerCallback, public CcachedAllocator
 	{
 	private:
 		preferred_tcp_server_settings m_defaultSettings;
@@ -138,7 +137,7 @@ namespace NETWORK_POOL
 		CworkQueue m_workQueue;
 
 	public:
-		ChttpServer(CnetworkPool& pool, size_t threadNumber)
+		CjsonServer(CnetworkPool& pool, size_t threadNumber)
 			:m_pool(pool), m_workQueue(threadNumber) {}
 
 		const preferred_tcp_server_settings& getSettings()
@@ -148,7 +147,7 @@ namespace NETWORK_POOL
 
 		CtcpCallback::ptr newTcpCallback()
 		{
-			return std::move(CtcpCallback::ptr(new ChttpSession(m_pool, m_workQueue)));
+			return std::move(CtcpCallback::ptr(new CjsonSession(m_pool, m_workQueue)));
 		}
 
 		void startup(const socket_id socketId, const Csockaddr& local)

@@ -119,7 +119,7 @@ namespace NETWORK_POOL
 		void pushTask(Ctask::ptr&& task)
 		{
 			std::unique_lock<std::mutex> lck(m_lock);
-			m_tasks.push_back(std::forward(task));
+			m_tasks.push_back(std::forward<Ctask::ptr>(task));
 			m_cv.notify_one();
 		}
 	};
