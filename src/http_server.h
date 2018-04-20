@@ -44,15 +44,17 @@ namespace NETWORK_POOL
 
 		void run()
 		{
+			if (m_context.unique())
+				return;
 			std::lock_guard<std::mutex> guard(m_context->getContextLock());
 			bool bAgain;
 			do
 			{
 				bAgain = false;
 				m_context->merge();
-				if (m_context->analysis())
+				if (!m_context.unique() && m_context->analysis())
 				{
-					if (m_context->isGood())
+					if (!m_context.unique() && m_context->isGood())
 					{
 						// Deal with the request.
 
@@ -134,12 +136,15 @@ namespace NETWORK_POOL
 		preferred_tcp_server_settings m_defaultSettings;
 
 		CnetworkPool& m_pool;
-
-		CworkQueue m_workQueue;
+		CworkQueue& m_workQueue;
 
 	public:
-		ChttpServer(CnetworkPool& pool, size_t threadNumber)
-			:m_pool(pool), m_workQueue(threadNumber) {}
+		ChttpServer(CnetworkPool& pool, CworkQueue& workQueue)
+			:m_pool(pool), m_workQueue(workQueue)
+		{
+			__dynamic_set_cache(sizeof(ChttpSession), 16384);
+			__dynamic_set_cache(sizeof(ChttpTask), 16384);
+		}
 
 		const preferred_tcp_server_settings& getSettings()
 		{

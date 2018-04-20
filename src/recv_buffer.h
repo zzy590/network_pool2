@@ -95,30 +95,33 @@ namespace NETWORK_POOL
 			}
 			{
 				std::lock_guard<std::mutex> guard(m_lock);
-				size_t totalAppend = 0;
-				for (const auto& pair : m_rawBuffers)
-					totalAppend += pair.second;
-				if (totalAppend + m_nowIndex > m_maxBufferSize)
-					m_bOverflow = true;
-				else
+				if (m_rawBuffers.size() > 0)
 				{
-					size_t targetSize = m_buffer.getLength();
-					while (targetSize - m_nowIndex < totalAppend)
-						targetSize *= 2;
-					if (targetSize > m_maxBufferSize)
-						targetSize = m_maxBufferSize;
-					m_buffer.resize(targetSize, m_nowIndex);
-					char *ptr = (char *)m_buffer.getData() + m_nowIndex;
+					size_t totalAppend = 0;
 					for (const auto& pair : m_rawBuffers)
+						totalAppend += pair.second;
+					if (totalAppend + m_nowIndex > m_maxBufferSize)
+						m_bOverflow = true;
+					else
 					{
-						memcpy(ptr, pair.first, pair.second);
-						ptr += pair.second;
-						m_nowIndex += pair.second;
+						size_t targetSize = m_buffer.getLength();
+						while (targetSize - m_nowIndex < totalAppend)
+							targetSize *= 2;
+						if (targetSize > m_maxBufferSize)
+							targetSize = m_maxBufferSize;
+						m_buffer.resize(targetSize, m_nowIndex);
+						char *ptr = (char *)m_buffer.getData() + m_nowIndex;
+						for (const auto& pair : m_rawBuffers)
+						{
+							memcpy(ptr, pair.first, pair.second);
+							ptr += pair.second;
+							m_nowIndex += pair.second;
+						}
 					}
+					for (const auto& pair : m_rawBuffers)
+						__free(pair.first);
+					m_rawBuffers.clear();
 				}
-				for (const auto& pair : m_rawBuffers)
-					__free(pair.first);
-				m_rawBuffers.clear();
 			}
 		}
 

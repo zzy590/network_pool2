@@ -42,8 +42,15 @@ namespace NETWORK_POOL
 		CjsonTask(CnetworkPool& pool, socket_id socketId, CmtSharedPtr<CjsonContext> context)
 			:m_pool(pool), m_socketId(socketId), m_context(context) {}
 
+		void jsonRpc(Cbuffer& buffer)
+		{
+			std::cout << "json: " << std::string((const char *)json.getData(), json.getLength()) << std::endl;
+		}
+
 		void run()
 		{
+			if (m_context.unique())
+				return;
 			std::lock_guard<std::mutex> guard(m_context->getContextLock());
 			bool bNeedClear = false;
 			bool bAgain;
@@ -51,14 +58,13 @@ namespace NETWORK_POOL
 			{
 				bAgain = false;
 				m_context->merge();
-				if (m_context->analysis())
+				if (!m_context.unique() && m_context->analysis())
 				{
 					Cbuffer json;
-					if (m_context->extract(json))
+					if (!m_context.unique() && m_context->extract(json))
 					{
 						// Deal with the request.
-						
-						std::cout << "json: " << std::string((const char *)json.getData(), json.getLength()) << std::endl;
+						jsonRpc(json);
 
 						m_context->restart();
 						bNeedClear = true;
@@ -133,12 +139,15 @@ namespace NETWORK_POOL
 		preferred_tcp_server_settings m_defaultSettings;
 
 		CnetworkPool& m_pool;
-
-		CworkQueue m_workQueue;
+		CworkQueue& m_workQueue;
 
 	public:
-		CjsonServer(CnetworkPool& pool, size_t threadNumber)
-			:m_pool(pool), m_workQueue(threadNumber) {}
+		CjsonServer(CnetworkPool& pool, CworkQueue& workQueue)
+			:m_pool(pool), m_workQueue(workQueue)
+		{
+			__dynamic_set_cache(sizeof(CjsonSession), 16384);
+			__dynamic_set_cache(sizeof(CjsonTask), 16384);
+		}
 
 		const preferred_tcp_server_settings& getSettings()
 		{
