@@ -42,7 +42,7 @@ namespace NETWORK_POOL
 		CjsonTask(CnetworkPool& pool, socket_id socketId, CmtSharedPtr<CjsonContext> context)
 			:m_pool(pool), m_socketId(socketId), m_context(context) {}
 
-		void jsonRpc(Cbuffer& buffer)
+		void jsonRpc(Cbuffer& json)
 		{
 			std::cout << "json: " << std::string((const char *)json.getData(), json.getLength()) << std::endl;
 		}
