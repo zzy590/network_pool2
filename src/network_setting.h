@@ -57,6 +57,7 @@ namespace NETWORK_POOL
 
 	struct preferred_tcp_timeout_settings
 	{
+		// Set 0 if you don't want timeout.
 		unsigned int tcp_connect_timeout_in_seconds;
 		unsigned int tcp_idle_timeout_in_seconds;
 		unsigned int tcp_send_timeout_in_seconds;

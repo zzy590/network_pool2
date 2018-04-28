@@ -35,12 +35,17 @@ namespace NETWORK_POOL
 
 	bool CnetworkPool::setTcpTimeout(Ctcp * const tcp, const unsigned int timeout_in_seconds)
 	{
-		return 0 == uv_timer_start(tcp->getTimer(), 
-			[](uv_timer_t *handle)
+		if (0 == timeout_in_seconds)
+			return 0 == uv_timer_stop(tcp->getTimer());
+		else
 		{
-			Ctcp *tcp = Ctcp::obtain(handle);
-			tcp->getPool()->shutdownTcpConnection(tcp);
-		}, timeout_in_seconds * 1000, 0);
+			return 0 == uv_timer_start(tcp->getTimer(),
+				[](uv_timer_t *handle)
+			{
+				Ctcp *tcp = Ctcp::obtain(handle);
+				tcp->getPool()->shutdownTcpConnection(tcp);
+			}, timeout_in_seconds * 1000, 0);
+		}
 	}
 
 	bool CnetworkPool::tcpReadWithTimeout(Ctcp * const tcp)
