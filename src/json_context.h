@@ -172,16 +172,30 @@ namespace NETWORK_POOL
 
 		void clear()
 		{
-			// Move extra.
-			size_t extra = CrecvBuffer::nowIndex() - m_analysisIndex;
-			char *ptr = (char *)CrecvBuffer::buffer().getData();
-			memmove(ptr, ptr + m_analysisIndex, extra);
-			CrecvBuffer::nowIndex() = extra;
+			if (state_done == m_state)
+			{
+				// Move extra.
+				size_t extra = CrecvBuffer::nowIndex() - m_analysisIndex;
+				char *ptr = (char *)CrecvBuffer::buffer().getData();
+				memmove(ptr, ptr + m_analysisIndex, extra);
+				CrecvBuffer::nowIndex() = extra;
 
-			m_analysisIndex = 0;
-			m_state = state_start;
-			m_depth = 0;
-			m_start = 0;
+				m_analysisIndex = 0;
+				m_state = state_start;
+				m_depth = 0;
+				m_start = 0;
+			}
+			else if (m_state != state_bad && m_start != 0)
+			{
+				// Move now and extra.
+				size_t extra = CrecvBuffer::nowIndex() - m_start;
+				char *ptr = (char *)CrecvBuffer::buffer().getData();
+				memmove(ptr, ptr + m_start, extra);
+				CrecvBuffer::nowIndex() = extra;
+
+				m_analysisIndex -= m_start;
+				m_start = 0;
+			}
 		}
 	};
 }
