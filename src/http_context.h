@@ -365,8 +365,19 @@ namespace NETWORK_POOL
 			return true;
 		}
 
+		// Return length of content or merged chunk.
+		size_t getContentLength() const
+		{
+			if (m_state != state_done)
+				return 0;
+			size_t total = 0;
+			for (const auto& pair : m_chunks)
+				total += pair.second;
+			return total;
+		}
+
 		// Return content or merged chunk.
-		bool getContent(Cbuffer& buffer)
+		bool getContent(Cbuffer& buffer) const
 		{
 			if (m_state != state_done)
 				return false;
@@ -384,7 +395,7 @@ namespace NETWORK_POOL
 			return true;
 		}
 
-		bool extract(ChttpContext& copy)
+		bool extract(ChttpContext& copy) const
 		{
 			if (m_state != state_done)
 				return false;
