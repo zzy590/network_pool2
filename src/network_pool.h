@@ -90,8 +90,8 @@ namespace NETWORK_POOL
 			socket_id m_socketId;
 			Cbuffer m_data;
 
-			__pending_send_tcp(const socket_id socketId, const void *data, const size_t length)
-				:m_socketId(socketId), m_data(data, length) {}
+			__pending_send_tcp(const socket_id socketId, Cbuffer&& data)
+				:m_socketId(socketId), m_data(std::forward<Cbuffer>(data)) {}
 
 			__pending_send_tcp(const __pending_send_tcp& another) = delete;
 			__pending_send_tcp(__pending_send_tcp&& another)
@@ -106,8 +106,8 @@ namespace NETWORK_POOL
 			Csockaddr m_remote;
 			Cbuffer m_data;
 
-			__pending_send_udp(const socket_id socketId, const Csockaddr& remote, const void *data, const size_t length)
-				:m_socketId(socketId), m_remote(remote), m_data(data, length) {}
+			__pending_send_udp(const socket_id socketId, const Csockaddr& remote, Cbuffer&& data)
+				:m_socketId(socketId), m_remote(remote), m_data(std::forward<Cbuffer>(data)) {}
 
 			__pending_send_udp(const __pending_send_udp& another) = delete;
 			__pending_send_udp(__pending_send_udp&& another)
@@ -245,9 +245,9 @@ namespace NETWORK_POOL
 			bind(std::move(__pending_bind(CnetworkNode::protocol_udp, socketId)));
 		}
 
-		void sendTcp(const socket_id socketId, const void *data, const size_t length, bool bAllowDirectCall = true)
+		void sendTcp(const socket_id socketId, Cbuffer&& data, bool bAllowDirectCall = true)
 		{
-			if (0 == length || nullptr == data)
+			if (SOCKET_ID_UNSPEC == socketId || 0 == data.getLength())
 				return;
 			if (bAllowDirectCall && std::this_thread::get_id() == m_thread->get_id())
 			{
@@ -256,14 +256,13 @@ namespace NETWORK_POOL
 				if (it != m_socketId2stream.end())
 				{
 					Ctcp *tcp = it->second.get();
-					Cbuffer buf(data, length);
-					if (!tcpWriteWithTimeout(tcp, &buf, 1))
+					if (!tcpWriteWithTimeout(tcp, &data, 1))
 						shutdownTcpConnection(tcp);
 				}
 			}
 			else
 			{
-				__pending_send_tcp temp(socketId, data, length);
+				__pending_send_tcp temp(socketId, std::forward<Cbuffer>(data));
 				{
 					std::lock_guard<std::mutex> guard(m_lock); // Use guard in case of exception.
 					m_pendingSendTcp.push_back(std::move(temp));
@@ -271,28 +270,39 @@ namespace NETWORK_POOL
 				uv_async_send(m_wakeup->getAsync());
 			}
 		}
-		void sendUdp(const socket_id socketId, const Csockaddr& remote, const void *data, const size_t length, bool bAllowDirectCall = true)
+		void sendTcp(const socket_id socketId, const void *data, const size_t length, bool bAllowDirectCall = true)
 		{
-			if (0 == length || nullptr == data || length > 65507)
+			if (SOCKET_ID_UNSPEC == socketId || 0 == length || nullptr == data)
+				return;
+			Cbuffer buf(data, length);
+			sendTcp(socketId, std::move(buf), bAllowDirectCall);
+		}
+		void sendUdp(const socket_id socketId, const Csockaddr& remote, Cbuffer&& data, bool bAllowDirectCall = true)
+		{
+			if (SOCKET_ID_UNSPEC == socketId || 0 == data.getLength() || data.getLength() > 65507)
 				return;
 			if (bAllowDirectCall && std::this_thread::get_id() == m_thread->get_id())
 			{
 				auto it = m_udpServers.find(socketId);
 				if (it != m_udpServers.end())
-				{
-					Cbuffer buf(data, length);
-					udpSend(it->second.get(), remote, &buf, 1);
-				}
+					udpSend(it->second.get(), remote, &data, 1);
 			}
 			else
 			{
-				__pending_send_udp temp(socketId, remote, data, length);
+				__pending_send_udp temp(socketId, remote, std::forward<Cbuffer>(data));
 				{
 					std::lock_guard<std::mutex> guard(m_lock); // Use guard in case of exception.
 					m_pendingSendUdp.push_back(std::move(temp));
 				}
 				uv_async_send(m_wakeup->getAsync());
 			}
+		}
+		void sendUdp(const socket_id socketId, const Csockaddr& remote, const void *data, const size_t length, bool bAllowDirectCall = true)
+		{
+			if (SOCKET_ID_UNSPEC == socketId || 0 == length || nullptr == data || length > 65507)
+				return;
+			Cbuffer buf(data, length);
+			sendUdp(socketId, remote, std::move(buf), bAllowDirectCall);
 		}
 
 		//
