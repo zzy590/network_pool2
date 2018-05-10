@@ -42,9 +42,9 @@ namespace NETWORK_POOL
 		CjsonTask(CnetworkPool& pool, socket_id socketId, CmtSharedPtr<CjsonContext> context)
 			:m_pool(pool), m_socketId(socketId), m_context(context) {}
 
-		void jsonRpc(Cbuffer& json)
+		void jsonRpc(const char *data, size_t length)
 		{
-			std::cout << "json: " << std::string((const char *)json.getData(), json.getLength()) << std::endl;
+			std::cout << "json: " << std::string(data, length) << std::endl;
 		}
 
 		void run()
@@ -60,11 +60,12 @@ namespace NETWORK_POOL
 				m_context->merge();
 				if (!m_context.unique() && m_context->analysis())
 				{
-					Cbuffer json;
-					if (!m_context.unique() && m_context->extract(json))
+					const char *data = nullptr;
+					size_t length = 0;
+					if (!m_context.unique() && m_context->referenceContent(data, length))
 					{
 						// Deal with the request.
-						jsonRpc(json);
+						jsonRpc(data, length);
 
 						m_context->restart();
 						bNeedClear = true;

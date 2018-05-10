@@ -163,6 +163,15 @@ namespace NETWORK_POOL
 			return true;
 		}
 
+		bool referenceContent(const void *& data, size_t& length)
+		{
+			if (m_state != state_done)
+				return false;
+			data = (const char *)CrecvBuffer::buffer().getData() + m_start;
+			length = m_analysisIndex - m_start;
+			return true;
+		}
+
 		void restart()
 		{
 			m_state = state_start;
