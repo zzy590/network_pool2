@@ -69,7 +69,7 @@ namespace NETWORK_POOL
 			m_lines.clear();
 			m_lines.reserve(16);
 			m_headerSize = 0;
-			m_bKeepAlive = false;
+			m_bKeepAlive = true; // Default keep-alive is true.
 			m_bChunked = false;
 			m_contentLength = 0;
 			m_nowChunkSize = 0;
@@ -392,6 +392,15 @@ namespace NETWORK_POOL
 				memcpy(dst, src + pair.first, pair.second);
 				dst += pair.second;
 			}
+			return true;
+		}
+
+		bool referenceContent(const void *& data, size_t& length)
+		{
+			if (m_state != state_done || m_chunks.size() != 1)
+				return false;
+			data = (const char *)CrecvBuffer::buffer().getData() + m_chunks[0].first;
+			length = m_chunks[0].second;
 			return true;
 		}
 
