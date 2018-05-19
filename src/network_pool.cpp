@@ -43,7 +43,8 @@ namespace NETWORK_POOL
 				[](uv_timer_t *handle)
 			{
 				Ctcp *tcp = Ctcp::obtain(handle);
-				tcp->getPool()->shutdownTcpConnection(tcp);
+				if (tcp->getCallback()->timeout())
+					tcp->getPool()->shutdownTcpConnection(tcp);
 			}, timeout_in_seconds * 1000, 0);
 		}
 	}

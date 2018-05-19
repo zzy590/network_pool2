@@ -48,6 +48,12 @@ namespace NETWORK_POOL
 		virtual void shutdown() = 0;
 
 		virtual void drop(const void * const data, const size_t length) = 0;
+
+		// Timeout notify. Return true to kill connection.
+		virtual bool timeout()
+		{
+			return true;
+		}
 	};
 
 	class CudpCallback
