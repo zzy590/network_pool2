@@ -163,7 +163,7 @@ namespace NETWORK_POOL
 			return true;
 		}
 
-		bool referenceContent(const void *& data, size_t& length)
+		bool referenceContent(const char *& data, size_t& length)
 		{
 			if (m_state != state_done)
 				return false;
